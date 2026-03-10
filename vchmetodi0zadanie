@@ -68,3 +68,94 @@ int main() {
 
     return 0;
 }
+#include <iostream>
+#include <vector>
+#include <iomanip>
+#include <cmath>
+
+using namespace std;
+
+int fact(int n) {
+    int f = 1;
+    for (int i = 2; i <= n; i++) f *= i;
+    return f;
+}
+
+int main() {
+    int n;
+    cout << "Количество точек: ";
+    cin >> n;
+    
+    vector<double> x(n), y(n);
+    
+    cout << "Введите x и y:\n";
+    for (int i = 0; i < n; i++) {
+        cin >> x[i] >> y[i];
+    }
+    
+    // Проверка шага
+    double h = x[1] - x[0];
+    for (int i = 1; i < n; i++) {
+        if (abs(x[i] - x[i-1] - h) > 1e-10) {
+            cout << "Ошибка: неравномерный шаг!\n";
+            return 1;
+        }
+    }
+    
+    double X;
+    cout << "x для интерполяции: ";
+    cin >> X;
+    
+    // Таблица разностей
+    vector<vector<double>> d(n, vector<double>(n, 0));
+    for (int i = 0; i < n; i++) d[i][0] = y[i];
+    
+    // Обратные разности
+    for (int j = 1; j < n; j++) {
+        for (int i = n-1; i >= j; i--) {
+            d[i][j] = d[i][j-1] - d[i-1][j-1];
+        }
+    }
+    
+    // Вывод таблицы
+    cout << "\nТаблица обратных разностей:\n";
+    for (int i = 0; i < n; i++) {
+        cout << x[i] << "\t";
+        for (int j = 0; j <= i; j++) {
+            cout << d[i][j] << "\t";
+        }
+        cout << endl;
+    }
+    
+    // Интерполяция
+    double t = (X - x[n-1]) / h;
+    double result = d[n-1][0];
+    double prod = 1.0;
+    
+    cout << "\nФормула: P(x) = y_n + t*dy_n + t(t+1)/2!*d2y_n + t(t+1)(t+2)/3!*d3y_n + ...\n";
+    cout << "t = " << t << "\n\n";
+    cout << "P(" << X << ") = " << d[n-1][0];
+    
+    for (int k = 1; k < n; k++) {
+        prod *= (t + k - 1);
+        double term = prod * d[n-1][k] / fact(k);
+        result += term;
+        
+        // ИСПРАВЛЕНО: округление маленьких значений до нуля
+        double display_term = term;
+        if (abs(display_term) < 1e-10) display_term = 0;
+        
+        if (display_term >= 0) {
+            cout << " + [" << prod << "/" << k << "!]*" << d[n-1][k] << " = " << display_term;
+        } else {
+            cout << " - [" << -prod << "/" << k << "!]*" << d[n-1][k] << " = " << display_term;
+        }
+    }
+    
+    // ИСПРАВЛЕНО: округление результата
+    if (abs(result) < 1e-10) result = 0;
+    
+    cout << "\n\nРЕЗУЛЬТАТ: " << fixed << setprecision(6) << result << endl;
+    
+    return 0;
+} отлично теперь работаем с данным кодом
