@@ -154,6 +154,7 @@ int main() {
         }
         cout << endl;
     }
+https://planetcalc.ru/1239/
 
     return 0;
 }
