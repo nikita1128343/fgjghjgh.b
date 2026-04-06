@@ -6,123 +6,111 @@
 
 using namespace std;
 
-// Функция построения таблицы обратных разностей
-// Возвращает двумерный вектор, где diff[k][i] — разность k-го порядка в точке i
-vector<vector<double>> compute_backward_differences(const vector<double>& y) {
-int n = y.size();
-vector<vector<double>> diff(n, vector<double>(n, 0.0));
+// Построение таблицы обратных разностей
+vector<vector<double>> build_table(const vector<double>& y) {
+    int n = y.size();
+    vector<vector<double>> tab(n, vector<double>(n, 0.0));
 
-// Нулевой порядок — сами значения функции
-for (int i = 0; i < n; ++i) {
-diff[0][i] = y[i];
+    for (int i = 0; i < n; ++i) {
+        tab[0][i] = y[i];
+    }
+
+    for (int k = 1; k < n; ++k) {
+        for (int i = k; i < n; ++i) {
+            tab[k][i] = tab[k-1][i] - tab[k-1][i-1];
+        }
+    }
+    return tab;
 }
 
-// Вычисление разностей высших порядков
-for (int k = 1; k < n; ++k) {
-for (int i = k; i < n; ++i) {
-diff[k][i] = diff[k-1][i] - diff[k-1][i-1];
-}
-}
-return diff;
-}
+// Интерполяция назад по Ньютону
+double newton_back(double x, const vector<double>& xx, const vector<double>& yy,
+                   const vector<vector<double>>& tab) {
+    int n = xx.size();
+    double h = xx[1] - xx[0];
+    double t = (x - xx[n-1]) / h;
 
-// Интерполяция по формуле Ньютона назад в точке x
-// x_vals — массив узлов (равноотстоящие)
-// y_vals — массив значений
-// diff — предвычисленная таблица обратных разностей
-double newton_backward(double x, const vector<double>& x_vals, const vector<double>& y_vals,
-const vector<vector<double>>& diff) {
-int n = x_vals.size();
-double h = x_vals[1] - x_vals[0]; // шаг (предполагается постоянным)
-double t = (x - x_vals[n-1]) / h; // нормированная переменная
+    double res = tab[0][n-1];
+    double pr = 1.0;
 
-double result = diff[0][n-1]; // y_n
-double term = 1.0;
-
-for (int k = 1; k < n; ++k) {
-term *= (t + k - 1) / k; // t*(t+1)*...*(t+k-1)/k!
-result += diff[k][n-1] * term; // добавляем ∇^k y_n * term
-}
-return result;
+    for (int k = 1; k < n; ++k) {
+        pr *= (t + k - 1) / k;
+        res += tab[k][n-1] * pr;
+    }
+    return res;
 }
 
 int main() {
-setlocale(LC_ALL, "Russian"); // для вывода сообщений на русском
+    setlocale(LC_ALL, "Russian");
 
-// ---- Ввод исходных данных ------------------------------------------
-int n;
-cout << "Введите количество точек: ";
-cin >> n;
+    // ---- Ввод данных ------------------------------------------
+    int n;
+    cout << "Введите число точек: ";
+    cin >> n;
 
-if (n < 2) {
-cerr << "Ошибка: необходимо хотя бы две точки для интерполяции." << endl;
-return 1;
-}
+    if (n < 2) {
+        cerr << "Ошибка: нужно минимум 2 точки." << endl;
+        return 1;
+    }
 
-vector<double> x_vals(n), y_vals(n);
-cout << "Введите точки (x y) по одной на строке:" << endl;
-for (int i = 0; i < n; ++i) {
-cin >> x_vals[i] >> y_vals[i];
-}
+    vector<double> x(n), y(n);
+    cout << "Введите x y построчно:" << endl;
+    for (int i = 0; i < n; ++i) {
+        cin >> x[i] >> y[i];
+    }
 
-// Проверка равноотстоящих узлов (с допуском)
-double h = (x_vals[n-1] - x_vals[0]) / (n - 1);
-const double eps = 1e-9;
-bool equally_spaced = true;
-for (int i = 1; i < n; ++i) {
-if (fabs((x_vals[i] - x_vals[i-1]) - h) > eps) {
-equally_spaced = false;
-break;
-}
-}
-if (!equally_spaced) {
-cerr << "Предупреждение: узлы не равноотстоящие. Формула Ньютона назад предполагает равномерный шаг." << endl;
-// Продолжаем со средним шагом; результат может быть неточным.
-}
+    // Проверка равномерности шага
+    double h0 = (x[n-1] - x[0]) / (n - 1);
+    const double eps = 1e-9;
+    bool ok = true;
+    for (int i = 1; i < n; ++i) {
+        if (fabs((x[i] - x[i-1]) - h0) > eps) {
+            ok = false;
+            break;
+        }
+    }
+    if (!ok) {
+        cerr << "Предупреждение: узлы не равноотстоящие." << endl;
+    }
 
-// ---- Построение таблицы обратных разностей -------------------------
-vector<vector<double>> diff = compute_backward_differences(y_vals);
+    // ---- Таблица разностей ------------------------------------
+    vector<vector<double>> tab = build_table(y);
 
-// ---- Параметры интерполяции ----------------------------------------
-double xmin, xmax;
-int num_points;
-cout << "Введите отрезок интерполяции [xmin xmax]: ";
-cin >> xmin >> xmax;
-cout << "Введите количество точек для построения графика: ";
-cin >> num_points;
+    // ---- Параметры интерполяции -------------------------------
+    double a, b;
+    int m;
+    cout << "Введите отрезок [a b]: ";
+    cin >> a >> b;
+    cout << "Введите число точек для графика: ";
+    cin >> m;
 
-if (num_points < 2) {
-cerr << "Ошибка: количество точек должно быть не менее 2." << endl;
-return 1;
-}
+    if (m < 2) {
+        cerr << "Ошибка: нужно минимум 2 точки." << endl;
+        return 1;
+    }
 
-// ---- Генерация интерполированных значений и запись в CSV ----------
-ofstream outfile("interpolation.csv");
-if (!outfile) {
-cerr << "Ошибка: не удалось создать выходной файл." << endl;
-return 1;
-}
+    // ---- Запись в CSV -----------------------------------------
+    ofstream fout("out.csv");
+    if (!fout) {
+        cerr << "Ошибка: не создать файл." << endl;
+        return 1;
+    }
 
-// Заголовок CSV
-outfile << "x,y_interpolated\n";
+    fout << "x,y\n";
+    double step = (b - a) / (m - 1);
+    for (int i = 0; i < m; ++i) {
+        double cx = a + i * step;
+        double cy = newton_back(cx, x, y, tab);
+        fout << fixed << setprecision(8) << cx << "," << cy << "\n";
+    }
 
-double step = (xmax - xmin) / (num_points - 1);
-for (int i = 0; i < num_points; ++i) {
-double x = xmin + i * step;
-double y = newton_backward(x, x_vals, y_vals, diff);
-outfile << fixed << setprecision(8) << x << "," << y << "\n";
-}
+    fout.close();
 
-outfile.close();
+    cout << "\nГотово! Результат в файле 'out.csv'" << endl;
+    cout << "Исходные точки:" << endl;
+    for (int i = 0; i < n; ++i) {
+        cout << "x=" << x[i] << " y=" << y[i] << endl;
+    }
 
-cout << "\nИнтерполяция завершена. Результат сохранён в файл 'interpolation.csv'." << endl;
-cout << "Откройте этот файл в Excel и постройте точечную диаграмму (Scatter)." << endl;
-
-// Для справки выведем исходные точки
-cout << "\nИсходные точки:" << endl;
-for (int i = 0; i < n; ++i) {
-cout << "x = " << x_vals[i] << ", y = " << y_vals[i] << endl;
-}
-
-return 0;
+    return 0;
 }
