@@ -1,0 +1,203 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <limits>
+
+using namespace std;
+
+const double EPS = 1e-6;
+const double DELTA = 1e-12;
+const int MAX_ITER = 100;
+
+// ================= ФУНКЦИЯ =================
+double f(double x) {
+return x*x*x - 6*x*x + 11*x - 6;
+}
+
+// ================= ПРОВЕРКА =================
+bool isValid(double x) {
+return isfinite(x);
+}
+
+// ================= БИСЕКЦИЯ =================
+double bisection(double a, double b) {
+if (!isValid(f(a)) || !isValid(f(b))) return NAN;
+
+if (f(a) * f(b) > 0) return NAN;
+
+double mid;
+for (int i = 0; i < MAX_ITER; i++) {
+mid = (a + b) / 2;
+
+if (!isValid(f(mid))) return NAN;
+
+if (fabs(f(mid)) < EPS || fabs(b - a) < EPS)
+return mid;
+
+if (f(a) * f(mid) < 0)
+b = mid;
+else
+a = mid;
+}
+return mid;
+}
+
+// ================= ПРОВЕРКА СЖАТИЯ ТОЧЕК =================
+bool badPoints(double x0, double x1, double x2) {
+return (fabs(x0 - x1) < DELTA ||
+fabs(x1 - x2) < DELTA ||
+fabs(x0 - x2) < DELTA);
+}
+
+// ================= ПРЯМАЯ ПАРАБОЛА =================
+double parabola_direct(double x0, double x1, double x2, double a, double b) {
+for (int i = 0; i < MAX_ITER; i++) {
+
+if (badPoints(x0, x1, x2)) return NAN;
+
+double f0 = f(x0), f1 = f(x1), f2 = f(x2);
+
+if (!isValid(f0)  !isValid(f1)  !isValid(f2))
+return NAN;
+
+double denom = ((x1 - x0)*(f1 - f2) - (x1 - x2)*(f1 - f0));
+
+if (fabs(denom) < DELTA) return NAN;
+
+double x = x1 - 0.5 * (
+((x1 - x0)*(x1 - x0)*(f1 - f2) -
+(x1 - x2)*(x1 - x2)*(f1 - f0)) / denom
+);
+
+// выход за границы → плохо
+if (x < a || x > b) return NAN;
+
+if (fabs(x - x1) < EPS)
+return x;
+
+x0 = x1;
+x1 = x2;
+x2 = x;
+}
+return NAN;
+}
+
+// ================= ОБРАТНАЯ ПАРАБОЛА =================
+double parabola_inverse(double x0, double x1, double x2, double a, double b) {
+for (int i = 0; i < MAX_ITER; i++) {
+
+if (badPoints(x0, x1, x2)) return NAN;
+
+double f0 = f(x0), f1 = f(x1), f2 = f(x2);
+
+if (!isValid(f0)  !isValid(f1)  !isValid(f2))
+return NAN;
+
+if (fabs(f0 - f1) < DELTA ||
+fabs(f1 - f2) < DELTA ||
+fabs(f0 - f2) < DELTA)
+return NAN;
+
+double x =
+x0 * f1 * f2 / ((f0 - f1)*(f0 - f2)) +
+x1 * f0 * f2 / ((f1 - f0)*(f1 - f2)) +
+x2 * f0 * f1 / ((f2 - f0)*(f2 - f1));
+
+if (!isValid(x)) return NAN;
+
+if (x < a || x > b) return NAN;
+
+if (fabs(x - x2) < EPS)
+return x;
+
+x0 = x1;
+x1 = x2;
+x2 = x;
+}
+return NAN;
+}
+
+// ================= ПОИСК ОТРЕЗКОВ =================
+vector<pair<double,double>> findSegments(double a, double b, int steps) {
+vector<pair<double,double>> segments;
+
+double h = (b - a) / steps;
+
+for (int i = 0; i < steps; i++) {
+double x1 = a + i*h;
+double x2 = x1 + h;
+
+double f1 = f(x1);
+double f2 = f(x2);
+
+if (!isValid(f1) || !isValid(f2)) continue;
+
+// смена знака
+if (f1 * f2 < 0) {
+segments.push_back({x1, x2});
+}
+// возможный кратный корень
+else if (fabs(f1) < EPS) {
+segments.push_back({x1 - h/2, x1 + h/2});
+}
+}
+
+return segments;
+}
+
+// ================= ГЛАВНАЯ =================
+int main() {
+double a, b;
+int steps;
+
+cout << "Введите [a, b]: ";
+cin >> a >> b;
+
+if (a >= b) {
+cout << "Ошибка: a >= b\n";
+return 1;
+}
+
+cout << "Введите шаги: ";
+cin >> steps;
+
+if (steps <= 0) {
+cout << "Ошибка: steps <= 0\n";
+return 1;
+}
+
+auto segments = findSegments(a, b, steps);
+
+if (segments.empty()) {
+cout << "Корни не найдены\n";
+return 0;
+}
+
+for (auto seg : segments) {
+double x1 = seg.first;
+double x2 = seg.second;
+double xm = (x1 + x2) / 2;
+
+cout << "\nОтрезок: [" << x1 << ", " << x2 << "]\n";
+
+double root_bis = bisection(x1, x2);
+
+// пробуем параболы
+double root_dir = parabola_direct(x1, xm, x2, x1, x2);
+double root_inv = parabola_inverse(x1, xm, x2, x1, x2);
+
+// fallback
+if (isnan(root_dir)) root_dir = root_bis;
+if (isnan(root_inv)) root_inv = root_bis;
+
+cout << "Бисекция: " << root_bis << endl;
+cout << "Прямая парабола: " << root_dir << endl;
+cout << "Обратная парабола: " << root_inv << endl;
+
+cout << "Погрешности:\n";
+cout << "|bis - dir| = " << fabs(root_bis - root_dir) << endl;
+cout << "|bis - inv| = " << fabs(root_bis - root_inv) << endl;
+}
+
+return 0;
+}
