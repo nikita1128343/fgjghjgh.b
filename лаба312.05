@@ -5,200 +5,279 @@
 
 using namespace std;
 
+// EPS — основная точность. Если |f(x)| < EPS или длина отрезка < EPS,
+// мы считаем, что корень найден. В теории это называется "критерий остановки".
 const double EPS = 1e-6;
+
+// DELTA — "машинный ноль" для защиты от деления на ноль.
+// Если знаменатель дроби меньше DELTA, мы не можем продолжать вычисления.
 const double DELTA = 1e-12;
+
+// MAX_ITER — максимальное число итераций. В теории любой численный метод —
+// это бесконечный итерационный процесс. Чтобы программа не зависла,
+// мы ограничиваем число шагов. Если корень не найден за MAX_ITER,
+// метод считается несошедшимся.
 const int MAX_ITER = 100;
 
 // ================= ФУНКЦИЯ =================
+// Исследуемая функция f(x) = x³ - 6x² + 11x - 6
+// Корни этого уравнения: x = 1, x = 2, x = 3.
+// Мы "забываем" про аналитическое решение и ищем корни численно.
 double f(double x) {
-	return x * x * x - 6 * x * x + 11 * x - 6;
+    return x*x*x - 6*x*x + 11*x - 6;
 }
 
 // ================= ПРОВЕРКА =================
+// Проверяет, что число "нормальное" (не NaN и не бесконечность).
+// Если в процессе вычислений появился NaN (например, 0/0),
+// это означает, что метод "сломался" и нужно прекратить.
 bool isValid(double x) {
-	return isfinite(x);
+    return isfinite(x);
 }
 
-// ================= БИСЕКЦИЯ =================
+// ================= БИСЕКЦИЯ (МЕТОД ДЕЛЕНИЯ ПОПОЛАМ) =================
+// САМЫЙ НАДЁЖНЫЙ МЕТОД. Работает всегда, если f(a) и f(b) имеют разные знаки.
+// Теорема Больцано-Коши: если непрерывная функция меняет знак на отрезке,
+// то внутри есть хотя бы один корень.
+// Алгоритм: делим отрезок пополам → выбираем половину, где знаки разные → повторяем.
+// Сходимость линейная (медленная, но гарантированная).
 double bisection(double a, double b) {
-	if (!isValid(f(a)) || !isValid(f(b))) return NAN;
+    // Проверка: значения функции должны быть определены
+    if (!isValid(f(a)) || !isValid(f(b))) return NAN;
 
-	if (f(a) * f(b) > 0) return NAN;
+    // Если знаки одинаковые (f(a)*f(b) > 0), метод не применим.
+    // Может не быть корня, либо их чётное количество.
+    if (f(a) * f(b) > 0) return NAN;
 
-	double mid;
-	for (int i = 0; i < MAX_ITER; i++) {
-		mid = (a + b) / 2;
+    double mid;
+    for (int i = 0; i < MAX_ITER; i++) {
+        mid = (a + b) / 2;  // Находим середину отрезка
 
-		if (!isValid(f(mid))) return NAN;
+        if (!isValid(f(mid))) return NAN;  // Проверка значения в середине
 
-		if (fabs(f(mid)) < EPS || fabs(b - a) < EPS)
-			return mid;
+        // Критерии остановки:
+        // 1. Значение функции близко к нулю → мы у корня
+        // 2. Отрезок стал слишком маленьким → точность достигнута
+        if (fabs(f(mid)) < EPS || fabs(b - a) < EPS)
+            return mid;  // Найден корень (с заданной точностью)
 
-		if (f(a) * f(mid) < 0)
-			b = mid;
-		else
-			a = mid;
-	}
-	return mid;
+        // Выбираем ту половину, где функция меняет знак.
+        // Именно там гарантированно находится корень.
+        if (f(a) * f(mid) < 0)
+            b = mid;  // Корень в левой половине [a, mid]
+        else
+            a = mid;  // Корень в правой половине [mid, b]
+    }
+    return mid;  // Возвращаем лучшее приближение после 100 итераций
 }
 
 // ================= ПРОВЕРКА СЖАТИЯ ТОЧЕК =================
-bool badPoints(double x0, double x1, double x2) {
-	return (fabs(x0 - x1) < DELTA ||
-		fabs(x1 - x2) < DELTA ||
-		fabs(x0 - x2) < DELTA);
+// Для построения параболы через 3 точки они должны быть РАЗЛИЧНЫМИ.
+// Если точки "слипаются" (расстояние между ними < DELTA),
+// мы не можем построить параболу — интерполяция вырождается.
+double badPoints(double x0, double x1, double x2) {
+    return (fabs(x0 - x1) < DELTA ||  // x0 ≈ x1
+            fabs(x1 - x2) < DELTA ||  // x1 ≈ x2
+            fabs(x0 - x2) < DELTA);   // x0 ≈ x2
 }
 
-// ================= ПРЯМАЯ ПАРАБОЛА =================
+// ================= ПРЯМАЯ ПАРАБОЛА (МЕТОД МЮЛЛЕРА) =================
+// ИДЕЯ: Через 3 точки (x0,f0), (x1,f1), (x2,f2) проводим параболу.
+// Находим корень этой параболы (ближайший к x1).
+// Это и будет наше новое приближение x.
+// Порядок сходимости ≈ 1.84 (быстрее секущих, но медленнее Ньютона).
+// ПЛЮС: Не нужна производная (в отличие от метода Ньютона).
 double parabola_direct(double x0, double x1, double x2, double a, double b) {
-	for (int i = 0; i < MAX_ITER; i++) {
+    for (int i = 0; i < MAX_ITER; i++) {
 
-		if (badPoints(x0, x1, x2)) return NAN;
+        // Шаг 1: Проверяем, что точки разные (иначе параболу не построить)
+        if (badPoints(x0, x1, x2)) return NAN;
 
-		double f0 = f(x0), f1 = f(x1), f2 = f(x2);
+        // Шаг 2: Вычисляем значения функции в трёх точках
+        double f0 = f(x0), f1 = f(x1), f2 = f(x2);
 
-		if (!isValid(f0) || !isValid(f1) || !isValid(f2))
-			return NAN;
+        // Все значения должны быть числами
+        if (!isValid(f0) || !isValid(f1) || !isValid(f2))
+            return NAN;
 
-		double denom = ((x1 - x0) * (f1 - f2) - (x1 - x2) * (f1 - f0));
+        // Шаг 3: Знаменатель формулы. Если он ≈ 0, парабола выродилась в прямую
+        double denom = ((x1 - x0)*(f1 - f2) - (x1 - x2)*(f1 - f0));
+        if (fabs(denom) < DELTA) return NAN;
 
-		if (fabs(denom) < DELTA) return NAN;
+        // Шаг 4: САМА ФОРМУЛА МЕТОДА МЮЛЛЕРА
+        // Аналитически решаем квадратное уравнение параболы.
+        // Выбираем тот корень, который ближе к x1.
+        // Формула уже адаптирована для избежания потери точности.
+        double x = x1 - 0.5 * (
+            ((x1 - x0)*(x1 - x0)*(f1 - f2) -
+             (x1 - x2)*(x1 - x2)*(f1 - f0)) / denom
+        );
 
-		double x = x1 - 0.5 * (
-			((x1 - x0) * (x1 - x0) * (f1 - f2) -
-				(x1 - x2) * (x1 - x2) * (f1 - f0)) / denom
-			);
+        // Шаг 5: Выход за границы исходного отрезка → метод не сработал
+        if (x < a || x > b) return NAN;
 
-		// выход за границы → плохо
-		if (x < a || x > b) return NAN;
+        // Шаг 6: Новое приближение почти совпало с предыдущим → сошлись
+        if (fabs(x - x1) < EPS)
+            return x;
 
-		if (fabs(x - x1) < EPS)
-			return x;
-
-		x0 = x1;
-		x1 = x2;
-		x2 = x;
-	}
-	return NAN;
+        // Шаг 7: Сдвигаем "окно" из трёх точек для следующей итерации
+        // (x0, x1) становятся (x1, x2). Это похоже на метод секущих,
+        // но там используется 2 точки, а здесь 3.
+        x0 = x1;
+        x1 = x2;
+        x2 = x;
+    }
+    return NAN;  // Не сошлось за MAX_ITER шагов
 }
 
 // ================= ОБРАТНАЯ ПАРАБОЛА =================
+// ИДЕЯ: Вместо аппроксимации y = f(x) параболой,
+// мы аппроксимируем ОБРАТНУЮ функцию x = g(y).
+// Точки для интерполяции: (f0, x0), (f1, x1), (f2, x2).
+// Корень: если y=0, то x = g(0). Подставляем y=0 в формулу Лагранжа.
+// ПЛЮС: Часто лучше работает, если функция "плоская" вблизи корня.
 double parabola_inverse(double x0, double x1, double x2, double a, double b) {
-	for (int i = 0; i < MAX_ITER; i++) {
+    for (int i = 0; i < MAX_ITER; i++) {
 
-		if (badPoints(x0, x1, x2)) return NAN;
+        // Шаг 1: Точки x должны быть разными
+        if (badPoints(x0, x1, x2)) return NAN;
 
-		double f0 = f(x0), f1 = f(x1), f2 = f(x2);
+        // Шаг 2: Значения функции
+        double f0 = f(x0), f1 = f(x1), f2 = f(x2);
 
-		if (!isValid(f0) || !isValid(f1) || !isValid(f2))
-			return NAN;
+        if (!isValid(f0) || !isValid(f1) || !isValid(f2))
+            return NAN;
 
-		if (fabs(f0 - f1) < DELTA ||
-			fabs(f1 - f2) < DELTA ||
-			fabs(f0 - f2) < DELTA)
-			return NAN;
+        // Шаг 3: Для ОБРАТНОЙ интерполяции значения f тоже должны быть разными!
+        // Иначе деление на ноль в формуле Лагранжа.
+        if (fabs(f0 - f1) < DELTA ||
+            fabs(f1 - f2) < DELTA ||
+            fabs(f0 - f2) < DELTA)
+            return NAN;
 
-		double x =
-			x0 * f1 * f2 / ((f0 - f1) * (f0 - f2)) +
-			x1 * f0 * f2 / ((f1 - f0) * (f1 - f2)) +
-			x2 * f0 * f1 / ((f2 - f0) * (f2 - f1));
+        // Шаг 4: ФОРМУЛА ОБРАТНОЙ КВАДРАТИЧНОЙ ИНТЕРПОЛЯЦИИ
+        // Это интерполяционный многочлен Лагранжа для функции x = g(y)
+        // в точке y=0.
+        // Состоит из трёх слагаемых (по числу узлов интерполяции).
+        double x =
+            x0 * f1 * f2 / ((f0 - f1)*(f0 - f2)) +  // Вклад от x0
+            x1 * f0 * f2 / ((f1 - f0)*(f1 - f2)) +  // Вклад от x1
+            x2 * f0 * f1 / ((f2 - f0)*(f2 - f1));   // Вклад от x2
 
-		if (!isValid(x)) return NAN;
+        // Шаг 5: Проверки на корректность и сходимость
+        if (!isValid(x)) return NAN;
+        if (x < a || x > b) return NAN;
 
-		if (x < a || x > b) return NAN;
+        if (fabs(x - x2) < EPS)
+            return x;
 
-		if (fabs(x - x2) < EPS)
-			return x;
-
-		x0 = x1;
-		x1 = x2;
-		x2 = x;
-	}
-	return NAN;
+        // Шаг 6: Сдвигаем окно точек
+        x0 = x1;
+        x1 = x2;
+        x2 = x;
+    }
+    return NAN;
 }
 
-// ================= ПОИСК ОТРЕЗКОВ =================
-vector<pair<double, double>> findSegments(double a, double b, int steps) {
-	vector<pair<double, double>> segments;
+// ================= ПОИСК ОТРЕЗКОВ С КОРНЯМИ =================
+// МЕТОД ТАБУЛЯЦИИ: разбиваем весь интервал [a,b] на мелкие отрезки
+// и ищем те, где функция меняет знак (значит, внутри есть корень).
+// Это этап ЛОКАЛИЗАЦИИ корней перед уточнением.
+vector<pair<double,double>> findSegments(double a, double b, int steps) {
+    vector<pair<double,double>> segments;  // Будет хранить найденные отрезки
 
-	double h = (b - a) / steps;
+    double h = (b - a) / steps;  // Длина одного маленького шага
 
-	for (int i = 0; i < steps; i++) {
-		double x1 = a + i * h;
-		double x2 = x1 + h;
+    for (int i = 0; i < steps; i++) {
+        double x1 = a + i*h;       // Левый конец i-го отрезка
+        double x2 = x1 + h;        // Правый конец i-го отрезка
 
-		double f1 = f(x1);
-		double f2 = f(x2);
+        double f1 = f(x1);
+        double f2 = f(x2);
 
-		if (!isValid(f1) || !isValid(f2)) continue;
+        if (!isValid(f1) || !isValid(f2)) continue;  // Пропускаем "плохие" точки
 
-		// смена знака
-		if (f1 * f2 < 0) {
-			segments.push_back({ x1, x2 });
-		}
-		// возможный кратный корень
-		else if (fabs(f1) < EPS) {
-			segments.push_back({ x1 - h / 2, x1 + h / 2 });
-		}
-	}
-
-	return segments;
+        // КРИТЕРИЙ 1: Смена знака (основной)
+        // f1 * f2 < 0 означает, что функция пересекает ось X.
+        if (f1 * f2 < 0) {
+            segments.push_back({x1, x2});
+        }
+        // КРИТЕРИЙ 2: Левая граница - почти корень.
+        // Это случай, когда мы "попали" точно в корень или в кратный корень,
+        // где смены знака нет (функция касается оси X).
+        else if (fabs(f1) < EPS) {
+            segments.push_back({x1 - h/2, x1 + h/2});  // Искусственно создаём отрезок вокруг
+        }
+    }
+    return segments;
 }
 
-// ================= ГЛАВНАЯ =================
+// ================= ГЛАВНАЯ ПРОГРАММА =================
 int main() {
-	setlocale(LC_ALL, "RUS");
-	double a, b;
-	int steps;
+    double a, b;   // Границы интервала поиска
+    int steps;     // На сколько частей разбивать интервал для поиска
 
-	cout << "Введите [a, b]: ";
-	cin >> a >> b;
+    cout << "Введите [a, b]: ";
+    cin >> a >> b;
 
-	if (a >= b) {
-		cout << "Ошибка: a >= b\n";
-		return 1;
-	}
+    // Проверка корректности ввода
+    if (a >= b) {
+        cout << "Ошибка: a >= b\n";
+        return 1;
+    }
 
-	cout << "Введите шаги: ";
-	cin >> steps;
+    cout << "Введите шаги: ";
+    cin >> steps;
 
-	if (steps <= 0) {
-		cout << "Ошибка: steps <= 0\n";
-		return 1;
-	}
+    if (steps <= 0) {
+        cout << "Ошибка: steps <= 0\n";
+        return 1;
+    }
 
-	auto segments = findSegments(a, b, steps);
+    // ===== ЭТАП 1: ЛОКАЛИЗАЦИЯ =====
+    // Разбиваем [a,b] на steps отрезков и ищем, где есть корни.
+    auto segments = findSegments(a, b, steps);
 
-	if (segments.empty()) {
-		cout << "Корни не найдены\n";
-		return 0;
-	}
+    if (segments.empty()) {
+        cout << "Корни не найдены\n";
+        return 0;
+    }
 
-	for (auto seg : segments) {
-		double x1 = seg.first;
-		double x2 = seg.second;
-		double xm = (x1 + x2) / 2;
+    // ===== ЭТАП 2: УТОЧНЕНИЕ КАЖДОГО КОРНЯ =====
+    for (auto seg : segments) {
+        double x1 = seg.first;   // Левый конец отрезка с корнем
+        double x2 = seg.second;  // Правый конец
+        double xm = (x1 + x2) / 2;  // Средняя точка (начальное приближение для парабол)
 
-		cout << "\nОтрезок: [" << x1 << ", " << x2 << "]\n";
+        cout << "\nОтрезок: [" << x1 << ", " << x2 << "]\n";
 
-		double root_bis = bisection(x1, x2);
+        // Метод 1: Бисекция — самый надёжный, используем как ЭТАЛОН
+        double root_bis = bisection(x1, x2);
 
-		// пробуем параболы
-		double root_dir = parabola_direct(x1, xm, x2, x1, x2);
-		double root_inv = parabola_inverse(x1, xm, x2, x1, x2);
+        // Метод 2: Прямая парабола (Мюллера) — быстрый, но может не сойтись
+        double root_dir = parabola_direct(x1, xm, x2, x1, x2);
 
-		// fallback
-		if (isnan(root_dir)) root_dir = root_bis;
-		if (isnan(root_inv)) root_inv = root_bis;
+        // Метод 3: Обратная парабола — тоже быстрый, но капризный
+        double root_inv = parabola_inverse(x1, xm, x2, x1, x2);
 
-		cout << "Бисекция: " << root_bis << endl;
-		cout << "Прямая парабола: " << root_dir << endl;
-		cout << "Обратная парабола: " << root_inv << endl;
+        // СТРАХОВКА: Если быстрый метод "упал" (вернул NaN),
+        // заменяем его результат на результат бисекции.
+        // NaN означает "не удалось найти корень этим методом".
+        if (isnan(root_dir)) root_dir = root_bis;
+        if (isnan(root_inv)) root_inv = root_bis;
 
-		cout << "Погрешности:\n";
-		cout << "|bis - dir| = " << fabs(root_bis - root_dir) << endl;
-		cout << "|bis - inv| = " << fabs(root_bis - root_inv) << endl;
-	}
+        // Вывод результатов
+        cout << "Бисекция: " << root_bis << endl;         // Эталон
+        cout << "Прямая парабола: " << root_dir << endl;   // Метод Мюллера
+        cout << "Обратная парабола: " << root_inv << endl; // Обратная интерполяция
 
-	return 0;
+        // Сравнение: насколько быстрые методы отличаются от надёжной бисекции?
+        // |bis - dir| — погрешность прямой параболы относительно эталона
+        // |bis - inv| — погрешность обратной параболы относительно эталона
+        cout << "Погрешности:\n";
+        cout << "|bis - dir| = " << fabs(root_bis - root_dir) << endl;
+        cout << "|bis - inv| = " << fabs(root_bis - root_inv) << endl;
+    }
+
+    return 0;
 }
